@@ -1,43 +1,85 @@
 name: "Build and push images"
 
 on:
-  workflow_dispatch:
+  # 1. 触发方式一：当代码推送到main分支时
   push:
     branches:
-      - 'main'
-    paths-ignore:
-      - "*.md"
+      - "main" # 如果您的主分支是 'master'，请在这里修改
+    tags:
+      - "v*.*.*" # 触发方式二：当推送一个 "v" 开头的git标签时 (例如 v1.0.0)
+    # 可选：您可以指定只有当这些文件变化时才触发
+    paths:
+      - "Dockerfile"
+      - "init.sh"
+
+  # 2. 触发方式三：手动触发，并允许输入自定义标签
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "请输入要构建的Docker标签 (例如 my-test-build)"
+        required: true
+        default: "manual-latest"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  Building:
-      runs-on: ubuntu-latest
-      name: "Build image"
-      env:
-        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        DOCKERHUB_REPOSITORY: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:latest
+  build-and-push:
+    runs-on: ubuntu-latest
+    name: "Build and push image with a single tag"
 
-      steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.1.1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3.0.0
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.0.0
+        uses: docker/setup-buildx-action@v3
 
-      - name: Login to DockerHub
-        uses: docker/login-action@v3.0.0
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ env.DOCKER_PASSWORD }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push images to Docker hub
-        uses: docker/build-push-action@v5.1.0
+      # 【核心修改】智能单一标签策略
+      - name: Extract single metadata tag
+        id: meta
+        uses: docker/metadata-action@v5
         with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # 设置标签生成规则，确保每次只生成一个标签
+          tags: |
+            # 规则1: 如果是手动触发 (workflow_dispatch)，使用输入的tag
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            # 规则2: 如果是推送git标签 (如 v1.2.0)，直接使用该git标签名
+            type=ref,event=tag,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            # 规则3: 如果是推送到main分支，使用短commit hash作为标签 (例如 a1b2c3d)
+            # 这是最佳实践，比 'latest' 更精确，可追溯
+            type=sha,prefix=,enable=${{ github.ref == 'refs/heads/main' }}
+
+      # 确认生成的标签（方便调试）
+      - name: Log generated tags
+        run: |
+          echo "Generated tags: ${{ steps.meta.outputs.tags }}"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
           push: true
-          platforms: linux/amd64, linux/arm64, linux/arm/v7
-          tags: ${{ env.DOCKERHUB_REPOSITORY }}
+          tags: ${{ steps.meta.outputs.tags }} # 这里现在每次只有一个标签
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
