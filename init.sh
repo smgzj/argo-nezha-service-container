@@ -10,9 +10,10 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
   WEB_PORT=8080
   PRO_PORT=${PORT:-'80'}
   BACKUP_TIME=${BACKUP_TIME:-'0 4 * * *'}
-  BACKUP_NUM= ${BACKUP_NUM:-'5'}
+  BACKUP_NUM=${BACKUP_NUM:-'5'}
   CADDY_HTTP_PORT=2052
   WORK_DIR=/dashboard
+
 
   # 如不分离备份的 github 账户，默认与哪吒登陆的 github 账户一致
   GH_BACKUP_USER=${GH_BACKUP_USER:-$GH_USER}
@@ -22,7 +23,8 @@ if [ ! -s /etc/supervisor/conf.d/damon.conf ]; then
   hint() { echo -e "\033[33m\033[01m$*\033[0m"; }   # 黄色
 
   # 如参数不齐全，容器退出，另外处理某些环境变量填错后的处理
-  if [[ "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+  if [[ "$DASHBOARD_VERSION" =~ ^(v)?0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+    AGENT_VERSION=${AGENT_VERSION:-'v0.20.5'}
     [[ -z "$GH_USER" || -z "$GH_CLIENTID" || -z "$GH_CLIENTSECRET" || -z "$ARGO_AUTH" || -z "$ARGO_DOMAIN" ]] && error " There are variables that are not set. "
   else
     [[ -z "$ARGO_AUTH" || -z "$ARGO_DOMAIN" ]] && error " There are argo variables that are not set. "
@@ -113,7 +115,7 @@ EOF
 }
 
 EOF
-    if [[ "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+    if [[ "$DASHBOARD_VERSION" =~ ^(v)?0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
       if [ -n "$UUID" ] && [ "$UUID" != "0" ]; then
         cat >> $WORK_DIR/Caddyfile << EOF
 :$PRO_PORT {
@@ -161,30 +163,25 @@ EOF
   fi
   
   # 下载需要的应用
+  # 下载 dashboard
   if [ -z "$DASHBOARD_VERSION" ]; then
     wget -O /tmp/dashboard.zip ${GH_PROXY}https://github.com/nezhahq/nezha/releases/latest/download/dashboard-linux-$ARCH.zip
-    if [ -z "$AGENT_VERSION" ]; then
-      wget -O $WORK_DIR/nezha-agent.zip ${GH_PROXY}https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_$ARCH.zip
-    elif [[ "$AGENT_VERSION" =~ 1\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
-      AGENT_LATEST=$(sed 's/v//; s/^/v&/' <<< "$AGENT_VERSION")
-      wget -O $WORK_DIR/nezha-agent.zip ${GH_PROXY}https://github.com/nezhahq/agent/releases/download/$AGENT_LATEST/nezha-agent_linux_$ARCH.zip
-    else
-      error "The AGENT_VERSION variable is not in the correct format, please check."
-    fi
-  elif [[ "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
-    [-z "$GH_USER" || -z "$GH_CLIENTID" || -z "$GH_CLIENTSECRET"] && error " There are github variables that are not set. "
+  elif [[ "$DASHBOARD_VERSION" =~ ^(v)?[0-1]\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+    [ -z "$GH_USER" ] || [ -z "$GH_CLIENTID" ] || [ -z "$GH_CLIENTSECRET" ] && error "There are github variables that are not set."
     DASHBOARD_LATEST=$(sed 's/v//; s/^/v&/' <<< "$DASHBOARD_VERSION")
     wget -O /tmp/dashboard.zip ${GH_PROXY}https://github.com/naiba/nezha/releases/download/$DASHBOARD_LATEST/dashboard-linux-$ARCH.zip
-    if [ -z "$AGENT_VERSION" ]; then
-      wget -O $WORK_DIR/nezha-agent.zip ${GH_PROXY}https://github.com/nezhahq/agent/releases/download/v0.20.5/nezha-agent_linux_$ARCH.zip
-    elif [[ "$AGENT_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
-      AGENT_LATEST=$(sed 's/v//; s/^/v&/' <<< "$AGENT_VERSION")
-      wget -O $WORK_DIR/nezha-agent.zip ${GH_PROXY}https://github.com/nezhahq/agent/releases/download/$AGENT_LATEST/nezha-agent_linux_$ARCH.zip
-    else
-      error "The AGENT_VERSION variable is not in the correct format, please check."
-    fi
   else
     error "The DASHBOARD_VERSION variable is not in the correct format, please check."
+  fi
+
+  # 下载 agent
+  if [ -z "$AGENT_VERSION" ]; then
+    wget -O $WORK_DIR/nezha-agent.zip ${GH_PROXY}https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_$ARCH.zip
+  elif [[ "$AGENT_VERSION" =~ ^(v)?[0-1]\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+    AGENT_LATEST=$(sed 's/v//; s/^/v&/' <<< "$AGENT_VERSION")
+    wget -O $WORK_DIR/nezha-agent.zip ${GH_PROXY}https://github.com/nezhahq/agent/releases/download/$AGENT_LATEST/nezha-agent_linux_$ARCH.zip
+  else
+    error "The AGENT_VERSION variable is not in the correct format, please check."
   fi
   unzip -o /tmp/dashboard.zip -d /tmp
   [ -d /tmp/dist ] && mv /tmp/dist/dashboard-linux-$ARCH /tmp/dashboard-linux-$ARCH
@@ -196,7 +193,7 @@ EOF
 
   # 根据参数生成哪吒服务端配置文件
   [ ! -d data ] && mkdir data
-  if [[ "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+  if [[ "$DASHBOARD_VERSION" =~ ^(v)?0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
     cat > ${WORK_DIR}/data/config.yaml << EOF
 Debug: false
 HTTPPort: $WEB_PORT
@@ -274,7 +271,7 @@ EOF
     fi
   fi
 
-  if [[ "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+  if [[ "$DASHBOARD_VERSION" =~ ^(v)?0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
     # 下载包含本地数据的 sqlite.db 文件，生成18位随机字符串用于本地 Token
     wget -P ${WORK_DIR}/data/ ${GH_PROXY}https://github.com/wzp7411/Argo-Nezha-Service-Container/raw/main/sqlite.db
     LOCAL_TOKEN=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 18)
@@ -312,7 +309,7 @@ ingress:
     path: /$GH_CLIENTID/*
   - hostname: $ARGO_DOMAIN
 EOF
-    if [[ "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+    if [[ "$DASHBOARD_VERSION" =~ ^(v)?0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
       cat >> $WORK_DIR/argo.yml << EOF
     service: http://localhost:$WEB_PORT
   - service: http_status:404
@@ -405,7 +402,7 @@ if [ -n "$UUID" ] && [ "$UUID" != "0" ]; then
   chmod 777 $WORK_DIR/webapp
   WEB_RUN="$WORK_DIR/webapp"
 fi
-if [[ "$DASHBOARD_VERSION" =~ 0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+if [[ "$DASHBOARD_VERSION" =~ ^(v)?0\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
    AG_RUN="$WORK_DIR/nezha-agent -s localhost:$GRPC_PORT -p $LOCAL_TOKEN --disable-auto-update --disable-force-update"
 else
    AG_RUN="$WORK_DIR/nezha-agent -c $WORK_DIR/data/config.yml"
