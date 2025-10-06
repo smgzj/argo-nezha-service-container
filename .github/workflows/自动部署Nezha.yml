@@ -54,9 +54,9 @@ on:
           - Neo-KSA(Riyadh)
       # ------------------- 新增：镜像名称输入 -------------------
       DOCKER_IMAGE:
-        description: "Docker 镜像地址 (可从 GitHub Releases 复制)"
+        description: "Docker 镜像地址"
         required: true
-        default: "镜像"
+        default: "ghcr.io/wzp7411/argo-nezha-service-container:main-6a1e5c9"
         type: string
       # ------------------- 原有的应用名称输入 -------------------
       app_name:
