@@ -1,4 +1,4 @@
-name: 自动部署Nezha
+name: 自动部署Nezha-SAP
 
 on:
   workflow_dispatch: # 只允许手动触发
@@ -54,9 +54,9 @@ on:
           - Neo-KSA(Riyadh)
       # ------------------- 新增：镜像名称输入 -------------------
       DOCKER_IMAGE:
-        description: "Docker 镜像地址"
+        description: "Docker 镜像地址(可以手动输入其他镜像)"
         required: true
-        default: "ghcr.io/wzp7411/argo-nezha-service-container:main-6a1e5c9"
+        default: "ghcr.io/wzp7411/argo-nezha-service-container:latest"
         type: string
       # ------------------- 原有的应用名称输入 -------------------
       app_name:
