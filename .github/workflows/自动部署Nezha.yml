@@ -295,7 +295,7 @@ jobs:
       - name: Start and Verify Application
         run: |
           # 确保目标已设置
-          cf target -o ${{ env.ORG }} -s ${{ env.SPACE }}
+          cf target -o "${{ env.ORG }}" -s "${{ env.SPACE }}"
 
           # 修复：设置 CF_STARTUP_TIMEOUT 环境变量为 5 分钟 (300秒)，解决启动慢导致失败
           export CF_STARTUP_TIMEOUT=5 
